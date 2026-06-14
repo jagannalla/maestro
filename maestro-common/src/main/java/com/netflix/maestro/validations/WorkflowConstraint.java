@@ -29,10 +29,13 @@ import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
+import java.util.ArrayDeque;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -155,6 +158,63 @@ public @interface WorkflowConstraint {
           return false;
         }
       }
+
+      // Kahn's algorithm for cycle detection
+      Map<String, Integer> inDegrees = new HashMap<>();
+      for (Step step : steps) {
+        inDegrees.put(
+            step.getId(),
+            predecessors.getOrDefault(step.getId(), Collections.emptySet()).size());
+      }
+
+      Queue<String> queue = new ArrayDeque<>();
+      for (Step step : steps) {
+        if (inDegrees.get(step.getId()) == 0) {
+          queue.add(step.getId());
+        }
+      }
+
+      int visitedCount = 0;
+      while (!queue.isEmpty()) {
+        String u = queue.poll();
+        visitedCount++;
+        StepTransition uTransition = transitionMap.get(u);
+        if (uTransition != null && uTransition.getSuccessors() != null) {
+          for (String v : uTransition.getSuccessors().keySet()) {
+            Integer inDegree = inDegrees.get(v);
+            if (inDegree != null) {
+              inDegrees.put(v, inDegree - 1);
+              if (inDegree - 1 == 0) {
+                queue.add(v);
+              }
+            }
+          }
+        }
+      }
+
+      if (visitedCount != steps.size()) {
+        context
+            .buildConstraintViolationWithTemplate(
+                "[workflow step transition] is invalid because the workflow DAG contains a cycle")
+            .addPropertyNode(STEPS_PROPERTY_NAME)
+            .addConstraintViolation();
+        return false;
+      }
+
+      for (Step step : steps) {
+        if (step.getType() == StepType.FOREACH) {
+          List<Step> nestedSteps = ((ForeachStep) step).getSteps();
+          if (nestedSteps != null && !nestedSteps.isEmpty() && !isDagValid(nestedSteps, context)) {
+            return false;
+          }
+        } else if (step.getType() == StepType.WHILE) {
+          List<Step> nestedSteps = ((WhileStep) step).getSteps();
+          if (nestedSteps != null && !nestedSteps.isEmpty() && !isDagValid(nestedSteps, context)) {
+            return false;
+          }
+        }
+      }
+
       return true;
     }
 

@@ -342,4 +342,115 @@ public class WorkflowConstraintTest extends BaseConstraintTest {
             + "]",
         violation.getMessage());
   }
+
+  @Test
+  public void isDagValidWithSelfLoopCycle() {
+    TypedStep step = new TypedStep();
+    step.setId("foo");
+    StepTransition transition = new StepTransition();
+    transition.setSuccessors(Collections.singletonMap("foo", "true"));
+    transition.setPredecessors(Collections.singletonList("foo"));
+    step.setTransition(transition);
+    Workflow workflow = Workflow.builder().steps(Collections.singletonList(step)).build();
+    Set<ConstraintViolation<TestWorkflow>> violations =
+        validator.validate(new TestWorkflow(workflow));
+    assertEquals(1, violations.size());
+    ConstraintViolation<TestWorkflow> violation = violations.iterator().next();
+    assertEquals("workflow.steps", violation.getPropertyPath().toString());
+    assertEquals(
+        "[workflow step transition] is invalid because the workflow DAG contains a cycle",
+        violation.getMessage());
+  }
+
+  @Test
+  public void isDagValidWithSimpleCycle() {
+    TypedStep step1 = new TypedStep();
+    step1.setId("foo");
+    StepTransition transition1 = new StepTransition();
+    transition1.setSuccessors(Collections.singletonMap("bar", "true"));
+    transition1.setPredecessors(Collections.singletonList("bar"));
+    step1.setTransition(transition1);
+
+    TypedStep step2 = new TypedStep();
+    step2.setId("bar");
+    StepTransition transition2 = new StepTransition();
+    transition2.setSuccessors(Collections.singletonMap("foo", "true"));
+    transition2.setPredecessors(Collections.singletonList("foo"));
+    step2.setTransition(transition2);
+
+    Workflow workflow = Workflow.builder().steps(Arrays.asList(step1, step2)).build();
+    Set<ConstraintViolation<TestWorkflow>> violations =
+        validator.validate(new TestWorkflow(workflow));
+    assertEquals(1, violations.size());
+    ConstraintViolation<TestWorkflow> violation = violations.iterator().next();
+    assertEquals("workflow.steps", violation.getPropertyPath().toString());
+    assertEquals(
+        "[workflow step transition] is invalid because the workflow DAG contains a cycle",
+        violation.getMessage());
+  }
+
+  @Test
+  public void isDagValidWithTransitiveCycle() {
+    TypedStep step1 = new TypedStep();
+    step1.setId("foo");
+    StepTransition transition1 = new StepTransition();
+    transition1.setSuccessors(Collections.singletonMap("bar", "true"));
+    transition1.setPredecessors(Collections.singletonList("baz"));
+    step1.setTransition(transition1);
+
+    TypedStep step2 = new TypedStep();
+    step2.setId("bar");
+    StepTransition transition2 = new StepTransition();
+    transition2.setSuccessors(Collections.singletonMap("baz", "true"));
+    transition2.setPredecessors(Collections.singletonList("foo"));
+    step2.setTransition(transition2);
+
+    TypedStep step3 = new TypedStep();
+    step3.setId("baz");
+    StepTransition transition3 = new StepTransition();
+    transition3.setSuccessors(Collections.singletonMap("foo", "true"));
+    transition3.setPredecessors(Collections.singletonList("bar"));
+    step3.setTransition(transition3);
+
+    Workflow workflow = Workflow.builder().steps(Arrays.asList(step1, step2, step3)).build();
+    Set<ConstraintViolation<TestWorkflow>> violations =
+        validator.validate(new TestWorkflow(workflow));
+    assertEquals(1, violations.size());
+    ConstraintViolation<TestWorkflow> violation = violations.iterator().next();
+    assertEquals("workflow.steps", violation.getPropertyPath().toString());
+    assertEquals(
+        "[workflow step transition] is invalid because the workflow DAG contains a cycle",
+        violation.getMessage());
+  }
+
+  @Test
+  public void isDagValidWithCycleInsideForeach() {
+    TypedStep step1 = new TypedStep();
+    step1.setId("foo");
+    StepTransition transition1 = new StepTransition();
+    transition1.setSuccessors(Collections.singletonMap("bar", "true"));
+    transition1.setPredecessors(Collections.singletonList("bar"));
+    step1.setTransition(transition1);
+
+    TypedStep step2 = new TypedStep();
+    step2.setId("bar");
+    StepTransition transition2 = new StepTransition();
+    transition2.setSuccessors(Collections.singletonMap("foo", "true"));
+    transition2.setPredecessors(Collections.singletonList("foo"));
+    step2.setTransition(transition2);
+
+    ForeachStep foreach = new ForeachStep();
+    foreach.setId("foreach-loop");
+    foreach.setSteps(Arrays.asList(step1, step2));
+
+    Workflow workflow = Workflow.builder().steps(Collections.singletonList(foreach)).build();
+    Set<ConstraintViolation<TestWorkflow>> violations =
+        validator.validate(new TestWorkflow(workflow));
+    assertEquals(1, violations.size());
+    ConstraintViolation<TestWorkflow> violation = violations.iterator().next();
+    assertEquals("workflow.steps", violation.getPropertyPath().toString());
+    assertEquals(
+        "[workflow step transition] is invalid because the workflow DAG contains a cycle",
+        violation.getMessage());
+  }
 }
